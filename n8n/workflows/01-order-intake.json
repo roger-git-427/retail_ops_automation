@@ -1,0 +1,1330 @@
+{
+  "name": "01-order-intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "orders",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3232,
+        -1424
+      ],
+      "id": "57d756c1-5fff-41fd-ae53-de64aca414db",
+      "name": "Webhook",
+      "webhookId": "ce01b158-94a3-4924-93ff-e62224895c79"
+    },
+    {
+      "parameters": {
+        "amount": "={{ 2 ** $runIndex }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1856,
+        -656
+      ],
+      "id": "9033feaa-a261-452e-8d04-d167b6e8958b",
+      "name": "Wait",
+      "webhookId": "27c5690d-6826-4d92-911f-ff20e593e31c"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"po_number\": \"{{ $json.body.po_number ?? '' }}\",\n  \"retailer_name\": \"{{ $json.body.retailer_name ?? '' }}\",\n  \"sku\": \"{{ $json.body.sku ?? '' }}\",\n  \"quantity\": {{ $json.body.quantity ?? null }},\n  \"unit_price\": {{ $json.body.unit_price ?? null }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -3072,
+        -1424
+      ],
+      "id": "6437df50-be28-46e6-aaf1-71fb2c76fdae",
+      "name": "Normalize Order"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1ba5da14-93c1-4ba2-8871-85377c821790",
+              "leftValue": "={{ \n  String($json.po_number ?? '').trim() !== '' &&\n  String($json.retailer_name ?? '').trim() !== '' &&\n  String($json.sku ?? '').trim() !== '' &&\n  $json.quantity !== null &&\n  Number.isInteger(Number($json.quantity)) &&\n  Number($json.quantity) > 0 &&\n  $json.unit_price !== null &&\n  Number.isFinite(Number($json.unit_price)) &&\n  Number($json.unit_price) >= 0\n}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2912,
+        -1424
+      ],
+      "id": "dd8b2a0c-64a5-44c8-aa2b-c223fee29a78",
+      "name": "Validate Order"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "orders",
+          "mode": "list",
+          "cachedResultName": "orders"
+        },
+        "where": {
+          "values": [
+            {
+              "column": "po_number",
+              "value": "={{ $json.po_number }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -2752,
+        -1424
+      ],
+      "id": "c6066bfb-2f33-4d2a-b5bb-ceb60140563f",
+      "name": "Check Existing PO",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "xMZ5ur8qUgJLqZZS",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://inventory-api:8000/inventory/{{ $('Normalize Order').item.json.sku }}",
+        "options": {
+          "timeout": 3000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -2432,
+        -1424
+      ],
+      "id": "31c07aa3-eb64-420d-b627-482136208d77",
+      "name": "Get Inventory",
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "qTlImw6ufDoA5TG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qTlImw6ufDoA5TG4",
+          "cachedResultName": "Log Execution"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "po_number": "={{ $('Normalize Order').item.json.po_number }}",
+            "workflow_name": "order_intake",
+            "outcome": "success",
+            "error_type": "={{ null }}",
+            "message": "={{ String($json.message ?? '').trim() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "error_type",
+              "displayName": "error_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -1776,
+        -1424
+      ],
+      "id": "d10a056f-c539-44a4-9057-bcfc6befbc07",
+      "name": "Log Created"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"created\",\n  \"message\": \"Order created successfully\"\n}",
+        "options": {
+          "responseCode": 201
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1616,
+        -1424
+      ],
+      "id": "08478b3e-aa2d-4045-8aff-6d1c310cc66d",
+      "name": "HTTP 201 "
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "qTlImw6ufDoA5TG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qTlImw6ufDoA5TG4",
+          "cachedResultName": "Log Execution"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "po_number": "={{ $('Normalize Order').item.json.po_number }}",
+            "workflow_name": "order_intake",
+            "outcome": "rejected",
+            "error_type": "=invalid_order",
+            "message": "Missing or invalid order fields"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "error_type",
+              "displayName": "error_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -2736,
+        -1200
+      ],
+      "id": "cb81c87d-225a-4461-a03c-b42d137d8abd",
+      "name": "Log Invalid"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"invalid_order\",\n  \"message\": \"Missing or invalid order fields\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2608,
+        -1200
+      ],
+      "id": "789b0bd1-a4e9-4f3f-8e21-a83c8634dd10",
+      "name": "HTTP 400"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "qTlImw6ufDoA5TG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qTlImw6ufDoA5TG4",
+          "cachedResultName": "Log Execution"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "po_number": "={{ $('Normalize Order').item.json.po_number }}",
+            "workflow_name": "order_intake",
+            "outcome": "duplicate",
+            "error_type": "=duplicate_order",
+            "message": "Order already exists"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "error_type",
+              "displayName": "error_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -2192,
+        -1024
+      ],
+      "id": "a8fe0349-035b-4917-b9d1-581b7dd9e99b",
+      "name": "Log Duplicate"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"already_processed\",\n  \"message\": \"Order already exists\"\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2064,
+        -1024
+      ],
+      "id": "f4f00f38-2a13-4584-b53e-d66655762503",
+      "name": "HTTP 200"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "qTlImw6ufDoA5TG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qTlImw6ufDoA5TG4",
+          "cachedResultName": "Log Execution"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "po_number": "={{ $('Normalize Order').item.json.po_number }}",
+            "workflow_name": "order_intake",
+            "outcome": "rejected",
+            "error_type": "=insufficient_stock",
+            "message": "Not enough inventory to fulfill this order"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "error_type",
+              "displayName": "error_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -2096,
+        -1200
+      ],
+      "id": "3c2a6dd1-fccd-463d-9fc9-64e16dabf122",
+      "name": "Log No Stock"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"insufficient_stock\",\n  \"message\": \"Not enough inventory to fulfill this order\"\n}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1968,
+        -1200
+      ],
+      "id": "b6e9c04e-06f9-4723-a168-714ead94acda",
+      "name": "HTTP 409"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7994afa5-ce3f-4018-8208-8797b0c9dfdc",
+              "leftValue": "={{ $runIndex < 2 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2000,
+        -656
+      ],
+      "id": "6beed623-c13d-46a3-8915-6409b98ab1a3",
+      "name": "Retries Left?"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "qTlImw6ufDoA5TG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qTlImw6ufDoA5TG4",
+          "cachedResultName": "Log Execution"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "po_number": "={{ $('Normalize Order').item.json.po_number }}",
+            "workflow_name": "order_intake",
+            "outcome": "rejected",
+            "error_type": "=unknown_sku",
+            "message": "SKU not found in inventory"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "error_type",
+              "displayName": "error_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -1984,
+        -848
+      ],
+      "id": "2ccdf483-e665-4722-bf11-6b681e12c1ca",
+      "name": "Log Unknown SKU"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"unknown_sku\",\n  \"message\": \"SKU not found in inventory\"\n}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1824,
+        -848
+      ],
+      "id": "79bd53c2-8aa7-4a30-b962-abd58bcf03a4",
+      "name": "HTTP 422"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "qTlImw6ufDoA5TG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qTlImw6ufDoA5TG4",
+          "cachedResultName": "Log Execution"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "po_number": "={{ $('Normalize Order').item.json.po_number }}",
+            "workflow_name": "order_intake",
+            "outcome": "failed",
+            "error_type": "=inventory_rate_limited",
+            "message": "Inventory service rate limit exceeded after retries"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "error_type",
+              "displayName": "error_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -1824,
+        -416
+      ],
+      "id": "0237c3ea-8527-4698-b968-6cf8d44d9d44",
+      "name": "Log Rate Limit"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"inventory_rate_limited\",\n  \"message\": \"Inventory service is temporarily unavailable. Please retry later.\"\n}",
+        "options": {
+          "responseCode": 503
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1696,
+        -416
+      ],
+      "id": "a4bd8628-545e-4d4f-bb23-7f27440e320e",
+      "name": "HTTP 503"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "qTlImw6ufDoA5TG4",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/qTlImw6ufDoA5TG4",
+          "cachedResultName": "Log Execution"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "po_number": "={{ $('Normalize Order').item.json.po_number }}",
+            "workflow_name": "order_intake",
+            "outcome": "failed",
+            "error_type": "=inventory_service_error",
+            "message": "Unable to verify inventory"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "error_type",
+              "displayName": "error_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -1824,
+        -224
+      ],
+      "id": "5d093943-449d-4a69-ba7a-7cbfde22ad19",
+      "name": "Log Inventory Error"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"inventory_service_error\",\n  \"message\": \"Unable to verify inventory\"\n}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1696,
+        -224
+      ],
+      "id": "09d852ad-5277-41c0-a374-6d951647fc3f",
+      "name": "HTTP 502"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO orders (\n    po_number,\n    retailer_name,\n    sku,\n    quantity,\n    unit_price\n)\nVALUES (\n    '{{ $(\"Edit Fields\").item.json.po_number }}',\n    '{{ $(\"Edit Fields\").item.json.retailer_name }}',\n    '{{ $(\"Edit Fields\").item.json.sku }}',\n    {{ $(\"Edit Fields\").item.json.quantity }},\n    {{ $(\"Edit Fields\").item.json.unit_price }}\n)\nON CONFLICT (po_number) DO NOTHING\nRETURNING id, po_number;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -2096,
+        -1424
+      ],
+      "id": "a46dfbb8-aabb-439d-b998-c56204b86790",
+      "name": "Atomic INSERT Order",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "xMZ5ur8qUgJLqZZS",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "79b9c721-1a28-4232-beaa-de38d2548609",
+              "leftValue": "={{ $json.id !== undefined && $json.id !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1936,
+        -1424
+      ],
+      "id": "9a9c4916-970d-4fc0-8e06-1eb03fa9127d",
+      "name": "Order Inserted?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.error.status }}",
+                    "rightValue": 404,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "eb1d664c-8729-4172-b7a1-f5119dccda16"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "404"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ff27942a-d9a5-47fb-bdcc-3b003ca7fbc1",
+                    "leftValue": "={{ $json.error.status }}",
+                    "rightValue": 429,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "429"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -2192,
+        -672
+      ],
+      "id": "97240e1a-a0a8-48b4-974d-5e1695bdf570",
+      "name": "Classify Inventory Error"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3de87765-b1fd-44d8-a786-f2d2f16a732b",
+              "leftValue": "={{ $json.id !== undefined && $json.id !== null }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2592,
+        -1424
+      ],
+      "id": "2866edd0-adf2-4e2c-a210-dd871b311caf",
+      "name": "Duplicate?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "091907e7-2b58-4d5c-b6e4-e38cfe953c79",
+              "leftValue": "={{ $json.available_quantity }}",
+              "rightValue": "={{ $('Normalize Order').item.json.quantity }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2256,
+        -1424
+      ],
+      "id": "8f2f06a0-92eb-4565-81ab-9b6b88439a2f",
+      "name": "Stock Available?"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Order": {
+      "main": [
+        [
+          {
+            "node": "Validate Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Order": {
+      "main": [
+        [
+          {
+            "node": "Check Existing PO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing PO": {
+      "main": [
+        [
+          {
+            "node": "Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Inventory": {
+      "main": [
+        [
+          {
+            "node": "Stock Available?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Inventory Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Created": {
+      "main": [
+        [
+          {
+            "node": "HTTP 201 ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Invalid": {
+      "main": [
+        [
+          {
+            "node": "HTTP 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Duplicate": {
+      "main": [
+        [
+          {
+            "node": "HTTP 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log No Stock": {
+      "main": [
+        [
+          {
+            "node": "HTTP 409",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retries Left?": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Unknown SKU": {
+      "main": [
+        [
+          {
+            "node": "HTTP 422",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "HTTP 503",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Inventory Error": {
+      "main": [
+        [
+          {
+            "node": "HTTP 502",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atomic INSERT Order": {
+      "main": [
+        [
+          {
+            "node": "Order Inserted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Inserted?": {
+      "main": [
+        [
+          {
+            "node": "Log Created",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Inventory Error": {
+      "main": [
+        [
+          {
+            "node": "Log Unknown SKU",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retries Left?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Inventory Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Log Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stock Available?": {
+      "main": [
+        [
+          {
+            "node": "Atomic INSERT Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log No Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1e09be73-9554-4f47-a377-5d7d3b05241d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7116ecfd00a3b9a29117b332800af98f3ab2c14dbde6de109cc4ec0ffff6efa7"
+  },
+  "nodeGroups": [],
+  "id": "oxFniLRfUSuwD2Sp",
+  "tags": []
+}
