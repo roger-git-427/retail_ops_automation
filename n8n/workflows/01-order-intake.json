@@ -858,7 +858,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO orders (\n    po_number,\n    retailer_name,\n    sku,\n    quantity,\n    unit_price\n)\nVALUES (\n    '{{ $(\"Edit Fields\").item.json.po_number }}',\n    '{{ $(\"Edit Fields\").item.json.retailer_name }}',\n    '{{ $(\"Edit Fields\").item.json.sku }}',\n    {{ $(\"Edit Fields\").item.json.quantity }},\n    {{ $(\"Edit Fields\").item.json.unit_price }}\n)\nON CONFLICT (po_number) DO NOTHING\nRETURNING id, po_number;",
+        "query": "INSERT INTO orders (\n    po_number,\n    retailer_name,\n    sku,\n    quantity,\n    unit_price\n)\nVALUES (\n    '{{ $(\"Normalize Order\").item.json.po_number }}',\n    '{{ $(\"Normalize Order\").item.json.retailer_name }}',\n    '{{ $(\"Normalize Order\").item.json.sku }}',\n    {{ $(\"Normalize Order\").item.json.quantity }},\n    {{ $(\"Normalize Order\").item.json.unit_price }}\n)\nON CONFLICT (po_number) DO NOTHING\nRETURNING id, po_number;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",

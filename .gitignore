@@ -18,3 +18,10 @@ Thumbs.db
 
 # Local scratch artifacts
 /curl
+
+
+airflow/models/*
+!airflow/models/.gitkeep
+
+# Runtime output (inspect in the running Airflow services, not in Git)
+/airflow/logs/
