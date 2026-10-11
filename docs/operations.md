@@ -53,16 +53,50 @@ Reapply `schema.sql` when upgrading an existing checkout. It adds the order-chan
 
 ## Manual DAG execution
 
+The controller and every child must be unpaused. In the Airflow UI, unpause these DAGs once after deployment: `retail_daily_pipeline`, `retail_daily_analytics`, `retail_data_quality`, `retail_ml_features`, `retail_ml_baseline`, `retail_ml_xgboost`, `retail_ml_forecast`, and `retail_inventory_risk`.
+
+Trigger the complete chain:
+
 ```bat
-docker compose exec -T airflow-scheduler airflow dags trigger retail_daily_analytics
-docker compose exec -T airflow-scheduler airflow dags trigger retail_ml_features
-docker compose exec -T airflow-scheduler airflow dags trigger retail_ml_baseline
-docker compose exec -T airflow-scheduler airflow dags trigger retail_ml_xgboost
-docker compose exec -T airflow-scheduler airflow dags trigger retail_ml_forecast
-docker compose exec -T airflow-scheduler airflow dags trigger retail_inventory_risk
+docker compose exec -T airflow-scheduler airflow dags trigger retail_daily_pipeline
 ```
 
-Only `retail_daily_analytics` is scheduled. Trigger the manual DAGs in dependency order; Airflow code does not connect them across DAG boundaries.
+Only `retail_daily_pipeline` is scheduled. Its trigger tasks wait for each child DAG to finish and stop the chain on failure. Individual child DAGs remain manually triggerable for focused recovery, but the operator then owns dependency safety.
+
+## Backfill demonstration
+
+Airflow backfills the scheduled controller; the controller creates or resets the matching child run for every logical date. Keep `max_active_runs=1` because the aggregate tables and model artifact are shared mutable outputs.
+
+Preview a three-day backfill without creating runs:
+
+```bat
+docker compose exec -T airflow-scheduler airflow backfill create --dag-id retail_daily_pipeline --from-date 2026-09-28 --to-date 2026-09-30 --reprocess-behavior failed --max-active-runs 1 --dry-run
+```
+
+Run the same backfill:
+
+```bat
+docker compose exec -T airflow-scheduler airflow backfill create --dag-id retail_daily_pipeline --from-date 2026-09-28 --to-date 2026-09-30 --reprocess-behavior failed --max-active-runs 1
+```
+
+Demonstrate that the quality gate is blocking by changing one aggregate in a disposable environment, triggering `retail_data_quality`, and checking that it fails. Restore correctness by recording the date for an incremental rebuild, rerunning analytics, and rerunning the gate. Never perform this step against data that cannot be rebuilt:
+
+```bat
+docker compose exec -T postgres sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -c \"WITH changed AS (UPDATE daily_sales SET total_units = total_units + 1 WHERE sale_date = (SELECT MAX(sale_date) FROM daily_sales) RETURNING sale_date) INSERT INTO orders_change_log (order_id, affected_sale_date, operation) SELECT 0, sale_date, 'BOOTSTRAP' FROM changed;\""
+docker compose exec -T airflow-scheduler airflow dags trigger retail_data_quality
+docker compose exec -T airflow-scheduler airflow dags trigger retail_daily_analytics
+docker compose exec -T airflow-scheduler airflow dags trigger retail_data_quality
+```
+
+The first quality run records a nonzero `daily_sales_mismatches` result and fails; after analytics rebuilds the recorded date, the second quality run records zero and succeeds.
+
+Verify controller runs in the Airflow metadata database:
+
+```bat
+docker compose exec -T airflow-postgres psql -U airflow -d airflow -c "SELECT dag_id, run_id, logical_date, state FROM dag_run WHERE dag_id = 'retail_daily_pipeline' AND logical_date::date BETWEEN DATE '2026-09-28' AND DATE '2026-09-30' ORDER BY logical_date;"
+```
+
+This backfill replays the current-state, idempotent pipeline for historical logical dates; it does not recreate point-in-time source snapshots. The CDC watermark means the first run consumes pending changes and later runs can be no-ops at the analytics stage. That limitation is intentional and documented in [Scaling and trade-offs](scaling-and-tradeoffs.md).
 
 ## Inspection queries
 
@@ -82,6 +116,12 @@ Model metrics:
 
 ```bat
 echo SELECT model_name, evaluation_period, mae, rmse, wape, evaluated_at FROM ml_model_metrics ORDER BY model_name, evaluation_period; | docker compose exec -T postgres sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -P pager=off"
+```
+
+Recent data-quality results:
+
+```bat
+echo SELECT checked_at, check_name, status, failure_count FROM data_quality_results ORDER BY checked_at DESC, id DESC LIMIT 20; | docker compose exec -T postgres sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -P pager=off"
 ```
 
 Latest forecast date per model:
@@ -111,6 +151,7 @@ docker compose exec -T postgres sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB" <
 ## Reliability mechanisms
 
 - All DAGs limit concurrency with `max_active_runs=1`.
+- The scheduled controller waits for child completion and will not release feature generation until the full-reconciliation quality DAG succeeds.
 - Order triggers append every affected date to a durable change log, including updates and deletes.
 - Daily analytics fixes one upper change ID, transactionally rebuilds complete affected-date aggregates, compares them to the source, then advances state.
 - Feature rebuilds and per-model evaluation prediction replacements use database transactions.
@@ -134,12 +175,12 @@ git rm -r --cached airflow\logs
 ## Known limitations
 
 - n8n database credentials and workflow imports require manual configuration.
-- ML DAGs are manual and have no cross-DAG scheduling or dependency enforcement.
+- Trigger tasks poll while waiting and therefore occupy a LocalExecutor worker slot; the Compose deployment does not run a triggerer for deferrable mode.
 - Inventory is static and is not decremented when an order is accepted.
 - Inventory risk uses one-day forecast demand as a days-of-supply approximation.
 
 ## Future work — not implemented
 
 - AI operations agent for SQL analytics, forecasts, inventory risk, inventory API access, n8n actions, and optional retrieval-augmented context.
-- Multi-horizon forecasting, scheduled/cross-DAG orchestration, model versioning, drift monitoring, and more realistic replenishment logic.
+- Multi-horizon forecasting, model registry/promotion, drift monitoring, and more realistic replenishment logic.
 - Spark or a data lake only if data volume outgrows the current PostgreSQL batch design.

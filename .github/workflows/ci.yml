@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python sources
+        run: python -m compileall -q airflow/dags services tests
+
+      - name: Run repository contract tests
+        run: python -m unittest tests/test_repository_contracts.py -v
+
+      - name: Validate Compose configuration
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: retail_ci
+          AIRFLOW_DB_PASSWORD: ci_airflow_password
+          AIRFLOW_FERNET_KEY: 4iIv6MZxO9fzv1mk7QC21GOYaT-iJlYUrkS1THrKQGQ=
+          AIRFLOW_JWT_SECRET: ci_jwt_secret
+        run: docker compose config --quiet
+
+      - name: Build the Airflow test image
+        run: docker build --tag retail-airflow-ci ./airflow
+
+      - name: Run Airflow DAG contract tests
+        run: >-
+          docker run --rm
+          --env AIRFLOW__CORE__LOAD_EXAMPLES=false
+          --volume "${{ github.workspace }}/airflow/dags:/opt/airflow/dags:ro"
+          --volume "${{ github.workspace }}/tests:/opt/airflow/tests:ro"
+          retail-airflow-ci
+          python -m unittest discover
+          --start-directory /opt/airflow/tests
+          --pattern test_dags.py
+          --verbose

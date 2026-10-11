@@ -14,7 +14,10 @@ flowchart TD
     CL --> DA[retail_daily_analytics]
     O --> DA
     DA --> AG[(daily and dimensional aggregates)]
-    AG --> FE[retail_ml_features]
+    AG --> DQ[retail_data_quality]
+    O --> DQ
+    DQ --> QR[(data_quality_results)]
+    DQ --> FE[retail_ml_features]
     FE --> FT[(dense series and features)]
     FT --> B[baseline evaluation]
     FT --> T[XGBoost training/evaluation]
@@ -26,7 +29,7 @@ flowchart TD
     IR --> RI[(sku_inventory_risk)]
 ```
 
-The n8n workflows are response-oriented: they validate each request, query dependencies, return an HTTP result, and log its outcome. Airflow handles batch dependencies, validation gates, chronological evaluation, model persistence, and repeatable derived tables.
+The n8n workflows are response-oriented: they validate each request, query dependencies, return an HTTP result, and log its outcome. Airflow handles batch dependencies, validation gates, chronological evaluation, model persistence, and repeatable derived tables. The scheduled `retail_daily_pipeline` controller triggers each child DAG and waits for success before releasing the next stage.
 
 PostgreSQL is split logically, not physically: `postgres` stores application, analytics, and ML data; `airflow-postgres` stores Airflow metadata. The FastAPI service is a deterministic simulator, not an inventory system of record.
 
@@ -36,6 +39,8 @@ PostgreSQL is split logically, not physically: `postgres` stores application, an
 | --- | --- |
 | `01-order-intake` | POST webhook, field normalization, validation, duplicate lookup, inventory lookup, response classification, attempted atomic insert |
 | `02-log-execution` | Reusable writer to `automation_executions` |
+| `retail_daily_pipeline` | Daily cross-DAG controller; enforces stage order and propagates child failures |
+| `retail_data_quality` | Full source-to-aggregate reconciliation and change-watermark gate |
 | Airflow API server | Web/API endpoint and execution API |
 | Airflow scheduler | LocalExecutor scheduling and task execution |
 | Airflow DAG processor | Parses serialized DAG definitions |
@@ -64,3 +69,5 @@ The Airflow runtime image is based on Airflow 3.3.2 and adds XGBoost 3.4.1, scik
 - `airflow-init` waits for the Airflow metadata database and runs `airflow db migrate`.
 - Airflow API, scheduler, and DAG processor wait for `airflow-init` to complete successfully.
 - Compose injects `retail_postgres` as an Airflow JSON connection using environment values.
+
+The controller and child DAGs must all be unpaused. A paused child produces a fast, visible controller failure instead of leaving a run waiting indefinitely.

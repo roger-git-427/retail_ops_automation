@@ -8,6 +8,7 @@ Application, analytics, and ML tables share the retail PostgreSQL database. Airf
 | `orders_change_log` | Append-only affected dates for order inserts, updates, and deletes | PK `change_id` | database trigger and bootstrap | daily analytics |
 | `automation_executions` | Operational workflow outcomes | PK `id` | n8n logging workflow | operational inspection |
 | `analytics_pipeline_state` | Per-pipeline watermark | PK `pipeline_name` | schema initialization; daily analytics | daily analytics |
+| `data_quality_results` | Append-only outcomes from each blocking quality check | PK `id` | data-quality DAG | operations and incident review |
 | `daily_sales` | One aggregate per sale date | PK `sale_date` | daily analytics | reporting/inspection |
 | `retailer_daily_metrics` | Retailer/day aggregates | PK (`sale_date`, `retailer_name`) | daily analytics | reporting/inspection |
 | `sku_daily_metrics` | SKU/day aggregates | PK (`sale_date`, `sku`) | daily analytics | ML feature DAG |
@@ -43,3 +44,7 @@ Each affected date is selected from the change-ID window. Existing aggregates fo
 ## Watermark state
 
 The state row is created idempotently by `db/schema.sql` and again defensively by the daily DAG. `last_processed_change_id` is authoritative; `last_processed_at` records the corresponding change time for operators. A successful run advances both only after all aggregate builders match source-derived expectations.
+
+## Data-quality audit
+
+`retail_data_quality` performs a full reconciliation after incremental analytics completes. It checks source field validity, all three aggregate tables against fresh source-derived results, and whether any order-change IDs remain above the analytics watermark. Each check appends `PASS` or `FAIL`, its failing-row count, and a timestamp to `data_quality_results`. Any nonzero count raises an exception, so the controller cannot start feature generation.

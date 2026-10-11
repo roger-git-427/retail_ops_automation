@@ -16,6 +16,18 @@ CREATE TABLE IF NOT EXISTS analytics_pipeline_state (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS data_quality_results (
+    id BIGSERIAL PRIMARY KEY,
+    dag_id VARCHAR(100) NOT NULL,
+    check_name VARCHAR(100) NOT NULL,
+    status VARCHAR(10) NOT NULL CHECK (status IN ('PASS', 'FAIL')),
+    failure_count BIGINT NOT NULL CHECK (failure_count >= 0),
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_quality_results_checked_at
+    ON data_quality_results (checked_at DESC);
+
 ALTER TABLE analytics_pipeline_state
     ADD COLUMN IF NOT EXISTS last_processed_change_id BIGINT;
 

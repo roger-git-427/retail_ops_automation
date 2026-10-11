@@ -2,20 +2,36 @@
 
 ## DAGs
 
-All ML DAGs use `schedule=None`: they are manually triggered. The code implements no cross-DAG dependency, trigger, or dataset scheduling, so operators must preserve the logical order below. Every DAG has `max_active_runs=1`.
+`retail_daily_pipeline` is scheduled with `@daily`. Every child DAG uses `schedule=None` and is launched by the controller with `TriggerDagRunOperator`; each trigger waits for success before the next stage can run. Every DAG has `max_active_runs=1`.
+
+### `retail_daily_pipeline`
+
+- **Schedule:** `@daily`; `catchup=False`; two-hour run timeout.
+- **Purpose:** enforce the complete cross-DAG dependency chain.
+- **Flow:** analytics -> data quality -> features -> baseline -> XGBoost -> forecast -> inventory risk.
+- **Reliability:** waits for each child; propagates failed child states; fails immediately for paused child DAGs; deterministic child run IDs allow an explicit controller rerun or backfill to reset the matching child run.
 
 ### `retail_daily_analytics`
 
-- **Schedule:** `@daily`; `catchup=False`; two retries with a two-minute delay.
+- **Schedule:** controller-triggered; two retries with a two-minute delay.
 - **Purpose:** incrementally recompute daily, retailer/day, and SKU/day aggregates.
 - **Flow:** `check_source_orders` → `get_processing_window` → `build_daily_sales` → [`build_retailer_metrics`, `build_sku_metrics`] → `validate_analytics` → `advance_watermark`.
 - **Input:** `orders`, `orders_change_log`, `analytics_pipeline_state`.
 - **Output:** `daily_sales`, `retailer_daily_metrics`, `sku_daily_metrics`, updated change-ID watermark.
 - **Reliability:** idempotent change-capture initialization; fixed upper change ID per run; transactional delete/rebuild by affected date; source-to-aggregate validation before watermark advancement; no-op when no new change exists.
 
+### `retail_data_quality`
+
+- **Schedule:** controller-triggered.
+- **Purpose:** block ML work unless operational source data, aggregates, and the CDC watermark agree.
+- **Flow:** `blocking_data_quality_gate`.
+- **Input:** `orders`, `orders_change_log`, `analytics_pipeline_state`, and all three aggregate tables.
+- **Output:** append-only `data_quality_results` audit rows.
+- **Reliability:** full bidirectional `EXCEPT` reconciliation catches missing, extra, or changed aggregate rows; any failed-row count raises an exception.
+
 ### `retail_ml_features`
 
-- **Schedule:** manual.
+- **Schedule:** controller-triggered; also available for focused manual recovery.
 - **Purpose:** create a gap-free SKU/day series and supervised next-day feature rows.
 - **Flow:** `check_source_data` → `build_daily_series` → `build_ml_features` → `validate_ml_features`.
 - **Input:** `sku_daily_metrics`.
@@ -24,7 +40,7 @@ All ML DAGs use `schedule=None`: they are manually triggered. The code implement
 
 ### `retail_ml_baseline`
 
-- **Schedule:** manual.
+- **Schedule:** controller-triggered; also available for focused manual recovery.
 - **Purpose:** evaluate persistence (`tomorrow ≈ today`) over the latest 30 target dates.
 - **Flow:** `get_evaluation_window` → `check_features` → `build_baseline_predictions` → `evaluate_baseline`.
 - **Input:** `ml_sku_features`.
@@ -33,7 +49,7 @@ All ML DAGs use `schedule=None`: they are manually triggered. The code implement
 
 ### `retail_ml_xgboost`
 
-- **Schedule:** manual.
+- **Schedule:** controller-triggered; also available for focused manual recovery.
 - **Purpose:** select, train, persist, and evaluate `XGBRegressor` as `xgboost_v1`.
 - **Flow:** `get_dataset_split` → `check_dataset` → `train_model` → `evaluate_model`.
 - **Input:** `ml_sku_features`.
@@ -42,7 +58,7 @@ All ML DAGs use `schedule=None`: they are manually triggered. The code implement
 
 ### `retail_ml_forecast`
 
-- **Schedule:** manual.
+- **Schedule:** controller-triggered; also available for focused manual recovery.
 - **Purpose:** generate next-day demand forecasts using the persisted model and latest dense-series row per SKU.
 - **Flow:** `check_model` → `generate_forecasts` → `validate_forecasts`.
 - **Input:** model artifact, `ml_sku_daily_series`.
@@ -51,23 +67,26 @@ All ML DAGs use `schedule=None`: they are manually triggered. The code implement
 
 ### `retail_inventory_risk`
 
-- **Schedule:** manual; two retries with a one-minute delay.
+- **Schedule:** controller-triggered; also available for focused manual recovery; two retries with a one-minute delay.
 - **Purpose:** combine the latest `xgboost_v1` forecast with current simulated inventory.
 - **Flow:** `check_latest_forecasts` → `build_inventory_risk` → `validate_inventory_risk`.
 - **Input:** `sku_demand_forecasts`, `GET http://inventory-api:8000/inventory/{sku}`.
 - **Output:** `sku_inventory_risk`.
 - **Reliability:** API timeout; encoded SKU path; exact forecast-date scope; atomic stale-row replacement; invalid-value and row-count validation.
 
-## Logical run order
+## Daily trigger chain
 
 1. `retail_daily_analytics`
-2. `retail_ml_features`
-3. `retail_ml_baseline` when a reference evaluation is wanted
-4. `retail_ml_xgboost` when training or reevaluation is needed
-5. `retail_ml_forecast`
-6. `retail_inventory_risk`
+2. `retail_data_quality`
+3. `retail_ml_features`
+4. `retail_ml_baseline`
+5. `retail_ml_xgboost`
+6. `retail_ml_forecast`
+7. `retail_inventory_risk`
 
 Training need not run as often as inference. After a compatible artifact exists, feature refresh → forecast → inventory risk can run without retraining.
+
+The controller currently retrains daily so the demonstration exercises the full lifecycle. At larger scale, training can move to a weekly or drift-triggered controller while the daily chain uses the latest compatible artifact; see [Scaling and trade-offs](scaling-and-tradeoffs.md).
 
 ## Analytics watermark
 

@@ -20,7 +20,7 @@ def _affected_dates_cte():
 
 @dag(
     dag_id="retail_daily_analytics",
-    schedule="@daily",
+    schedule=None,
     start_date=pendulum.datetime(2026, 9, 27, tz="UTC"),
     catchup=False,
     max_active_runs=1,

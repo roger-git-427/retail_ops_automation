@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="300" viewBox="0 0 1600 300" role="img" aria-labelledby="title desc">
+  <title id="title">Airflow retail daily pipeline DAG graph</title>
+  <desc id="desc">A left-to-right dependency chain from analytics through data quality, feature engineering, model evaluation, forecasting, and inventory risk.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#111827" flood-opacity="0.14"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .title { font: 700 24px Arial, sans-serif; fill: #111827; }
+      .subtitle { font: 14px Arial, sans-serif; fill: #64748b; }
+      .node { fill: #ffffff; stroke: #7c3aed; stroke-width: 2; rx: 9; filter: url(#shadow); }
+      .gate { fill: #fff7ed; stroke: #ea580c; stroke-width: 2.5; rx: 9; filter: url(#shadow); }
+      .label { font: 600 14px Arial, sans-serif; fill: #1f2937; text-anchor: middle; }
+      .small { font: 12px Arial, sans-serif; fill: #64748b; text-anchor: middle; }
+      .edge { stroke: #64748b; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="300" fill="#f8fafc"/>
+  <text x="36" y="42" class="title">retail_daily_pipeline / Graph</text>
+  <text x="36" y="68" class="subtitle">Scheduled @daily · every trigger waits for the child DAG to succeed</text>
+
+  <path class="edge" d="M224 164 H248"/>
+  <path class="edge" d="M436 164 H460"/>
+  <path class="edge" d="M648 164 H672"/>
+  <path class="edge" d="M860 164 H884"/>
+  <path class="edge" d="M1072 164 H1096"/>
+  <path class="edge" d="M1284 164 H1308"/>
+
+  <rect class="node" x="36" y="116" width="188" height="96"/>
+  <text class="label" x="130" y="153">Daily analytics</text>
+  <text class="small" x="130" y="178">CDC aggregates</text>
+
+  <rect class="gate" x="248" y="116" width="188" height="96"/>
+  <text class="label" x="342" y="151">Data-quality gate</text>
+  <text class="small" x="342" y="176">full reconciliation</text>
+  <text class="small" x="342" y="195">blocks on failure</text>
+
+  <rect class="node" x="460" y="116" width="188" height="96"/>
+  <text class="label" x="554" y="153">ML features</text>
+  <text class="small" x="554" y="178">dense SKU/day series</text>
+
+  <rect class="node" x="672" y="116" width="188" height="96"/>
+  <text class="label" x="766" y="153">Baseline</text>
+  <text class="small" x="766" y="178">30-day evaluation</text>
+
+  <rect class="node" x="884" y="116" width="188" height="96"/>
+  <text class="label" x="978" y="153">XGBoost</text>
+  <text class="small" x="978" y="178">select, train, evaluate</text>
+
+  <rect class="node" x="1096" y="116" width="188" height="96"/>
+  <text class="label" x="1190" y="153">Forecast</text>
+  <text class="small" x="1190" y="178">next-day SKU demand</text>
+
+  <rect class="node" x="1308" y="116" width="188" height="96"/>
+  <text class="label" x="1402" y="153">Inventory risk</text>
+  <text class="small" x="1402" y="178">days-of-supply tiers</text>
+
+  <circle cx="342" cy="238" r="5" fill="#ea580c"/>
+  <text class="small" x="342" y="266">Explicit release gate</text>
+</svg>
